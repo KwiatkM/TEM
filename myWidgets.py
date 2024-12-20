@@ -4,7 +4,7 @@ import PIL.Image
 import numpy as np
 from tkinter import ttk
 from tkinter import *
-from tkinter.filedialog import askopenfilename
+from tkinter.filedialog import askopenfilename, asksaveasfilename
 import utils
 import copy
 from dataclasses import dataclass
@@ -74,9 +74,9 @@ class KernelPickerGrid(Canvas):
                                  outline='red')
 
     def getKernel(self):
-        return self.gridArray
+        return self.gridArray.transpose()
 
-class BinaryImageProcessingMainFrame(ttk.Frame):
+class BinaryImageProcessingFrame(ttk.Frame):
 
     @dataclass
     class HistoryElement:
@@ -87,17 +87,23 @@ class BinaryImageProcessingMainFrame(ttk.Frame):
 
     def __init__(self, parent, **kwargs):
         ttk.Frame.__init__(self, parent, **kwargs)
+        self.hasImage = False
+
+        # selected images
+        self.selectedImages = []
 
         # history
         self.appliedTransforms = []
 
         # variables
+        self.selectedImagesNumber = StringVar()
+        self.selectedImagesNumber.set('Selected images: 0')
         self.customKernelSize = StringVar()
         self.customKernelSize.set('3')
         self.transformationKernelSize = StringVar()
         self.transformationKernelSize.set('3')
 
-        transformations = ('Dilation', 'Erosion', 'Opening', 'Closing') # 'Thinning', 'Thickening'
+        transformations = ('Dilation', 'Erosion', 'Opening', 'Closing')
         self.choosenTransform = StringVar()
 
         # widgets 
@@ -107,6 +113,7 @@ class BinaryImageProcessingMainFrame(ttk.Frame):
         self.historyFrame = ttk.LabelFrame(historyBaseFrame, text='history')
 
         selectFileButton = ttk.Button(optFrame, text="Select image", command=self.chooseImageFile)
+
         standardTransformationFrame = ttk.LabelFrame(optFrame, text="classic transformations", padding=10)
         transformationSizeInfoLabel = ttk.Label(standardTransformationFrame, text='Kernel size:')
         transformationSizeSpinbox = ttk.Spinbox(standardTransformationFrame, from_=3, to=15, increment=2, textvariable=self.transformationKernelSize)
@@ -119,6 +126,13 @@ class BinaryImageProcessingMainFrame(ttk.Frame):
         self.customKernelChoiseGrid = KernelPickerGrid(customKernelChoiseFrame, 3)
         customKernelApplyButton = ttk.Button(customKernelChoiseFrame, text='Apply', command=self.transformCustom)
         infoLabel = ttk.Label(optFrame, text="black = 0\nwhite = 1")
+
+        selectedImagesFrame = ttk.Labelframe(optFrame, text="", padding=10)
+        self.selectedImagesNumberLabel = ttk.Label(selectedImagesFrame, textvariable=self.selectedImagesNumber)
+        selectCurrentImageButton = ttk.Button(selectedImagesFrame, text="Select this image", command=self.selectImage)
+        combineSelectedImagesButton = ttk.Button(selectedImagesFrame, text="Combine images", command=self.combineImages)
+
+        saveImageButton = ttk.Button(optFrame, text="Save image", command=self.saveImage)
 
         self.imgLabel = ttk.Label(imgFrame, text='No image to display')
         self.imgLabel.pack()
@@ -143,14 +157,19 @@ class BinaryImageProcessingMainFrame(ttk.Frame):
         customKernelSizeSpinbox.grid(column=0, row=0, sticky=W)
         self.customKernelChoiseGrid.grid(column=0,row=1)
         customKernelApplyButton.grid(column=0,row=2)
+
+        selectedImagesFrame.grid(column=0, row=4)
+        selectCurrentImageButton.grid(column=0,row=0)
+        self.selectedImagesNumberLabel.grid(column=0, row=1)
+        combineSelectedImagesButton.grid(column=0, row=2)
+
+        saveImageButton.grid(column=0, row=5, sticky=S)
         
         historyGoBackButton.grid(column=0,row=0, sticky=N)
         self.historyFrame.grid(column=0,row=1, sticky=N)
         
 
         self.imgLabel.grid(column=0, row=0)
-
-
 
     ########## widget functions ##########
 
@@ -165,28 +184,43 @@ class BinaryImageProcessingMainFrame(ttk.Frame):
             img = ImageTk.PhotoImage(pilImg)
         except:
             return
-        self.setImage(img, pilImg, "Image loaded")
+        self.setImage(pilImg, "Image loaded")
     
-    def setImage(self, img, pilImage, log="Transform"):
-        self.pilImage = pilImage
-        self.imgLabel.config(image=img)
-        self.imgLabel.image=img
-        self.addToHistory(log,self.pilImage)
+    def setImage(self, pilImage, log="Transform"):
+
+        if self.checkIfBinary(pilImage):
+            self.pilImage = pilImage
+            img = ImageTk.PhotoImage(pilImage)
+            self.imgLabel.config(image=img)
+            self.imgLabel.image=img
+            self.addToHistory(log,self.pilImage)
+            self.hasImage = True
+        else:
+            self.imgLabel.config(text="This is not a binary image!\nSelect a proper binary image or use a converter in the second tab")
+
+    def checkIfBinary(self, img:PIL.Image):
+        imgArray = np.asanyarray(img)
+        if len(imgArray.shape) == 2:
+            return len(np.unique(imgArray)) == 2
+        return np.all(imgArray[:,:,0] == imgArray[:,:,1]) and np.all(imgArray[:,:,1] == imgArray[:,:,2])
     
     def transform(self):
-        kernelSize = int(self.transformationKernelSize.get())
-        transformedImage = utils.transformBinaryImage(np.asanyarray(self.pilImage),
-                                                                    self.choosenTransform.get(),
-                                                                    kernelSize)
-        pilImg = PIL.Image.fromarray(transformedImage)
-        self.setImage(ImageTk.PhotoImage(pilImg), pilImg, self.choosenTransform.get() + f" {kernelSize}x{kernelSize}")
+        if self.hasImage:
+            kernelSize = int(self.transformationKernelSize.get())
+            transformedImage = utils.transformBinaryImage(np.asanyarray(self.pilImage),
+                                                                        self.choosenTransform.get(),
+                                                                        kernelSize)
+            pilImg = PIL.Image.fromarray(transformedImage)
+            self.setImage(pilImg, self.choosenTransform.get() + f" {kernelSize}x{kernelSize}")
     
     def transformCustom(self):
-        kernel = self.customKernelChoiseGrid.getKernel()
-        transformedImage = utils.HitOrMiss(np.asanyarray(self.pilImage),kernel=kernel)
-        pilImg = PIL.Image.fromarray(transformedImage)
-        kernel.shape[0]
-        self.setImage(ImageTk.PhotoImage(pilImg), pilImg, f"Hit-or-Miss {kernel.shape[0]}x{kernel.shape[0]}")    
+        if self.hasImage:
+            kernel = self.customKernelChoiseGrid.getKernel()
+            # print(kernel)
+            transformedImage = utils.HitOrMiss(np.asanyarray(self.pilImage),kernel=kernel)
+            pilImg = PIL.Image.fromarray(transformedImage)
+            kernel.shape[0]
+            self.setImage(pilImg, f"Hit-or-Miss {kernel.shape[0]}x{kernel.shape[0]}")    
     
     def addToHistory(self, transformName, img):
         label = ttk.Label(self.historyFrame, text=f"{len(self.appliedTransforms)+1}. {transformName}")
@@ -201,6 +235,26 @@ class BinaryImageProcessingMainFrame(ttk.Frame):
             self.imgLabel.config(image=img)
             self.imgLabel.image=img
             tmp.label.destroy()
+    
+    def selectImage(self):
+        if self.hasImage:
+            self.selectedImages.append(np.asanyarray(self.pilImage))
+            self.selectedImagesNumber.set(f'Selected images: {len(self.selectedImages)}')
+
+    def combineImages(self):
+        if len(self.selectedImages) > 1:
+            combinedImage = utils.CombineImages(self.selectedImages)
+            pilImg = PIL.Image.fromarray(combinedImage)
+            self.setImage(pilImg, "Image merge")
+            self.selectedImages.clear()
+            self.selectedImagesNumber.set(f'Selected images: {len(self.selectedImages)}')
+    
+    def saveImage(self):
+        if self.hasImage:
+            savePath = asksaveasfilename( defaultextension=".png", filetypes=[("PNG", "*.png")])
+            if savePath:
+                self.pilImage.save(savePath)
+        
 
 
 
@@ -211,9 +265,10 @@ class ColorToBinaryConversionFrame(ttk.Frame):
     COLOR_CHANNEL_SCALE_LENGTH = 100
     COLOR_CHANNEL_DEFAULT_VALUE = 0.7
 
-    def __init__(self, parent, imgProcessingFrame:BinaryImageProcessingMainFrame, **kwargs):
+    def __init__(self, parent, imgProcessingFrame:BinaryImageProcessingFrame, **kwargs):
         ttk.Frame.__init__(self, parent, **kwargs)
         self.imgProcessingFrame = imgProcessingFrame
+        self.hasImage = False
 
         # variables
         self.isImageLoaded = False
@@ -282,6 +337,8 @@ class ColorToBinaryConversionFrame(ttk.Frame):
         channel_3_Scale.bind("<ButtonRelease-1>", self.processImage)
         self.changeColorChanel()
 
+    ########## widget functions ##########
+
     def chooseImageFile(self, *args):
         filename = askopenfilename()
         try:
@@ -293,6 +350,7 @@ class ColorToBinaryConversionFrame(ttk.Frame):
             return
         self.imgLabel.config(image=img)
         self.imgLabel.image=img
+        self.hasImage = True
     
     def changeColorChanel(self, *args):
         colorChannelNames = self.colorModelsInfo[self.colorModelsVar.get()]
@@ -312,80 +370,10 @@ class ColorToBinaryConversionFrame(ttk.Frame):
                                             float(self.channel_3_value.get()))
             pilImg = PIL.Image.fromarray(imgProcessed)
             img = ImageTk.PhotoImage(pilImg)
-            print(imgProcessed[0:11,0,0])
             self.pilImage = pilImg
             self.imgLabel.config(image=img)
             self.imgLabel.image=img
     
     def setImageForProcessing(self,*args):
-        self.imgProcessingFrame.setImage(self.imgLabel.image, self.pilImage, "Converted Image loaded")
-
-        
-
-
-
-
-# class ImageConversionControlsFrame(ttk.LabelFrame):
-#     COLOR_CHANNEL_SCALE_LENGTH = 100
-#     COLOR_CHANNEL_DEFAULT_VALUE = 0.7
-
-#     def __init__(self, parent, **kwargs):
-#         ttk.LabelFrame.__init__(self, parent, **kwargs)
-        
-#         self.colorModels = ('RGB', 'YCbCr')
-#         self.colorModelsInfo = {'RGB':('R','G','B'), 'YCbCr':('Y', 'Cb', 'Cr')}
-
-#         self.colorModelsVar = StringVar()
-#         self.colorModelsVar.set(self.colorModels[0])
-#         self.channel_1_value = StringVar()
-#         self.channel_2_value = StringVar()
-#         self.channel_3_value = StringVar()
-#         self.channel_1_value.set(self.COLOR_CHANNEL_DEFAULT_VALUE)
-#         self.channel_2_value.set(self.COLOR_CHANNEL_DEFAULT_VALUE)
-#         self.channel_3_value.set(self.COLOR_CHANNEL_DEFAULT_VALUE)
-
-
-#         colorModelCombobox = ttk.Combobox(self, textvariable=self.colorModelsVar, state= "readonly",takefocus=False)
-#         colorModelCombobox['values'] = self.colorModels
-#         colorChanelChoiceFrame = ttk.Frame(self, width=250, height=90)
-#         channel_1_Scale = ttk.Scale(colorChanelChoiceFrame, length=self.COLOR_CHANNEL_SCALE_LENGTH, from_=0.0, to=1.0, variable=self.channel_1_value)
-#         channel_2_Scale = ttk.Scale(colorChanelChoiceFrame, length=self.COLOR_CHANNEL_SCALE_LENGTH, from_=0.0, to=1.0, variable=self.channel_2_value)
-#         channel_3_Scale = ttk.Scale(colorChanelChoiceFrame, length=self.COLOR_CHANNEL_SCALE_LENGTH, from_=0.0, to=1.0, variable=self.channel_3_value)
-#         channel_1_ValueLabel = ttk.Label(colorChanelChoiceFrame, textvariable=self.channel_1_value)
-#         channel_2_ValueLabel = ttk.Label(colorChanelChoiceFrame, textvariable=self.channel_2_value)
-#         channel_3_ValueLabel = ttk.Label(colorChanelChoiceFrame, textvariable=self.channel_3_value)
-#         self.channel_1_InfoLabel = ttk.Label(colorChanelChoiceFrame)
-#         self.channel_2_InfoLabel = ttk.Label(colorChanelChoiceFrame)
-#         self.channel_3_InfoLabel = ttk.Label(colorChanelChoiceFrame)
-        
-#         colorModelCombobox.current(0)
-#         colorModelCombobox.grid(row=0,column=0)
-#         colorChanelChoiceFrame.grid(row=1,column=0)
-#         colorChanelChoiceFrame.grid_propagate(False)
-#         self.channel_1_InfoLabel.grid(row=0,column=0, sticky=W)
-#         channel_1_Scale.grid         (row=0,column=1, sticky=W)
-#         channel_1_ValueLabel.grid    (row=0,column=2, sticky=W)
-#         self.channel_2_InfoLabel.grid(row=1,column=0, sticky=W)
-#         channel_2_Scale.grid         (row=1,column=1, sticky=W)
-#         channel_2_ValueLabel.grid    (row=1,column=2, sticky=W)
-#         self.channel_3_InfoLabel.grid(row=2,column=0, sticky=W)
-#         channel_3_Scale.grid         (row=2,column=1, sticky=W)
-#         channel_3_ValueLabel.grid    (row=2,column=2, sticky=W)
-
-#         colorModelCombobox.bind('<<ComboboxSelected>>', self.changeColorChanel)
-#         channel_1_Scale.bind("<ButtonRelease-1>", self.processImage)
-#         channel_2_Scale.bind("<ButtonRelease-1>", self.processImage)
-#         channel_3_Scale.bind("<ButtonRelease-1>", self.processImage)
-#         self.changeColorChanel()
-
-#     def changeColorChanel(self, *args):
-#         colorChannelNames = self.colorModelsInfo[self.colorModelsVar.get()]
-#         self.channel_1_InfoLabel.config(text=colorChannelNames[0])
-#         self.channel_2_InfoLabel.config(text=colorChannelNames[1])
-#         self.channel_3_InfoLabel.config(text=colorChannelNames[2])
-    
-#     def processImage(self, *args):
-#         print(1)
-
-
-
+        if self.hasImage:
+            self.imgProcessingFrame.setImage(self.pilImage, "Converted Image loaded")

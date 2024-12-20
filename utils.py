@@ -1,21 +1,8 @@
 from PIL import Image
 import numpy as np
-from matplotlib import pyplot as plt
 
 
 def grayscale2binary(img:np.ndarray, threshold:float = 0.7):
-    #
-    # Converts grayscale image to binary image with given threshold
-    # input:
-    # img: image saved as numpy ndarray. Can be int or float
-    # threshold: threshold based on which pixlels turn 0 or 1. Must be between 0.0 and 1.0 
-    #
-    # returns binary image as np.ndarray of np.uint8 with 0s and 1s
-    #
-
-    # if not img.flags.writeable:
-    #     img = img.copy()
-
     if(len(img.shape)==3):
         img = img[:,:,1]
     
@@ -31,7 +18,6 @@ def grayscale2binary(img:np.ndarray, threshold:float = 0.7):
             bin_img[index] = 0
         else:
             bin_img[index] = 1
-
     return bin_img
 
 def rgb2binary(  img:np.ndarray,
@@ -50,10 +36,7 @@ def rgb2binary(  img:np.ndarray,
 
     sum = r_bin + g_bin + b_bin
     sum = (sum >= 1.0) * 1.0
-    # print(sum)
-    # print(sum.shape)
-    # print(sum.max())
-    # print(sum.min())
+
     return np.dstack((sum,sum,sum)).astype(np.uint8) * 255
 
 def ycbcr2binary(  img:np.ndarray,
@@ -72,7 +55,9 @@ def openAsBinary( src:str):
 
 def transformBinaryImage(img:np.ndarray, transformation:str, kernelSize:int, outOfBorderPixelValue:int=0):
     OUT_OF_BORDER_VALUE = np.uint8(outOfBorderPixelValue)
-    binImage = img[:,:,1] # reduce image dimention to one
+    if not len(img.shape) == 2 : binImage = img[:,:,1]
+    else: binImage = img
+     # reduce image dimention to two
     (h,w) = binImage.shape
     processedBinaryImage = np.zeros((h,w), dtype=np.uint8) # check type
     kernelRadius = int((kernelSize-1)/2)
@@ -126,14 +111,11 @@ def transformBinaryImage(img:np.ndarray, transformation:str, kernelSize:int, out
     return np.dstack((processedBinaryImage,processedBinaryImage,processedBinaryImage))
 
 def HitOrMiss(img:np.ndarray, kernel:np.ndarray, outOfBorderPixelValue:int=0):
-    # print(img.shape)
-    # print(img.dtype)
-    # print(img)
-    # print(kernel)
     OUT_OF_BORDER_VALUE = np.uint8(outOfBorderPixelValue)
-    binImage = img[:,:,1] # reduce image dimention to one
+    if not len(img.shape) == 2 : binImage = img[:,:,1]
+    else: binImage = img
     (h,w) = binImage.shape
-    processedBinaryImage = np.zeros((h,w), dtype=np.uint8) # check type
+    processedBinaryImage = np.zeros((h,w), dtype=np.uint8)
     kernelSize = kernel.shape[0]
     kernelRadius = int((kernelSize-1)/2)
     paddedImage = np.full((h+kernelSize-1,w+kernelSize-1), OUT_OF_BORDER_VALUE, dtype=np.uint8)
@@ -145,3 +127,15 @@ def HitOrMiss(img:np.ndarray, kernel:np.ndarray, outOfBorderPixelValue:int=0):
             processedBinaryImage[x,y] = 255
        
     return np.dstack((processedBinaryImage,processedBinaryImage,processedBinaryImage))
+
+def CombineImages(imgs):
+    imgs2d = []
+
+    for img in imgs:
+        imgs2d.append(img[:,:,1])
+    finalImage = np.zeros(imgs2d[0].shape, dtype=np.uint8)
+    for img in imgs2d:
+        for (x,y), value in np.ndenumerate(img):
+            if value == 255:
+                finalImage[x,y] = 255
+    return np.dstack((finalImage,finalImage,finalImage))
