@@ -10,6 +10,7 @@ Implemented functions:
 ## Usage
 ```bash
 git clone https://github.com/KwiatkM/TEM
+cd TEM
 pip install -r requirements.txt
 python app.py
 ```
